@@ -15,6 +15,11 @@ class Server:
     __clients: list = attr.ib(default=[], init=False)
     __user_names: list = attr.ib(default=[], init=False)
 
+    @_port.validator
+    def _check_x(self, attribute, value):
+        if value < 1024:
+            raise ValueError("Port number must be greater than 1024.")
+
     def __attrs_post_init__(self) -> None:
         address = (self._host_ip, self._port)
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -41,6 +46,23 @@ class Server:
         message = f'{username} joined the room!'
         self.broadcast_2_clients(message)
 
+    def receive_info(self, client: socket.socket):
+        msg_len = client.recv(self.__header_len).decode(self.__encoding_format)
+        if msg_len:
+            msg_len = int(msg_len)
+            msg = client.recv(msg_len).decode(self.__encoding_format)
+            self.broadcast_2_clients(message=msg)
+
+    def remove_client(self, client: socket.socket):
+        index = self.__clients.index(client)
+        self.__clients.remove(client)
+        client.close()
+        username = self.__user_names[index]
+        broadcast_msg = f'{username} left the room.'
+        self.broadcast_2_clients(broadcast_msg)
+        self.__user_names.remove(username)
+        print(self.__user_names)
+
     def broadcast_2_clients(self, message: str) -> None:
         for client in self.__clients:
             self.send_info(client=client, info=message)
@@ -50,20 +72,10 @@ class Server:
 
         while True:
             try:
-                msg_len = client.recv(self.__header_len).decode(self.__encoding_format)
-                if msg_len:
-                    msg_len = int(msg_len)
-                    msg = client.recv(msg_len).decode(self.__encoding_format)
-                    self.broadcast_2_clients(message=msg)
+                self.receive_info(client=client)
 
             except ConnectionResetError or OSError or ValueError:
-                index = self.__clients.index(client)
-                self.__clients.remove(client)
-                client.close()
-                username = self.__user_names[index]
-                broadcast_msg = f'{username} left the room.'
-                self.broadcast_2_clients(broadcast_msg)
-                self.__user_names.remove(username)
+                self.remove_client(client=client)
 
     def run_client_conn(self, client, client_ip):
         thread = threading.Thread(target=self.handle_client, args=(client, client_ip))
